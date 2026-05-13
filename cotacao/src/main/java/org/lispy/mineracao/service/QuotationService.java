@@ -2,6 +2,7 @@ package org.lispy.mineracao.service;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import org.eclipse.microprofile.rest.client.inject.RestClient;
 import org.lispy.mineracao.client.CurrencyPriceClient;
 import org.lispy.mineracao.dto.CurrencyPriceDto;
@@ -12,7 +13,6 @@ import org.lispy.mineracao.repository.QuotationRepository;
 
 import java.math.BigDecimal;
 import java.util.Date;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @ApplicationScoped
@@ -28,8 +28,17 @@ public class QuotationService {
     @Inject
     KafkaEvents kafkaEvents;
 
+    @Transactional
     public void getCurrencyPrice() {
+        CurrencyPriceDto currencyPriceDto = currencyPriceClient.getPrice("USD-BRL");
 
+        if(updateCurrencyInfoPrice(currencyPriceDto)) {
+            kafkaEvents.sendNewKafkaEvent(QuotationDto
+                    .builder()
+                    .currencyPrice(new BigDecimal(currencyPriceDto.getUsdbrl().getBid()))
+                    .date(new Date())
+                    .build());
+        }
     }
 
     private boolean updateCurrencyInfoPrice(CurrencyPriceDto currencyPriceInfo) {
@@ -37,13 +46,12 @@ public class QuotationService {
         BigDecimal currentPrice = new BigDecimal(currencyPriceInfo.getUsdbrl().getBid());
         boolean updatePrice = false;
 
-        List<QuotationEntity> quotationEntityList = quotationRepository.findAll().list();
-        if(quotationEntityList.isEmpty()) {
+        QuotationEntity lastDollarPrice = quotationRepository.find("ORDER BY id DESC").firstResult();
+        if(lastDollarPrice == null) {
             saveQuotation(currencyPriceInfo);
             updatePrice = true;
         } else {
-            QuotationEntity lastDollarPrice = quotationEntityList.get(quotationEntityList.size() - 1);
-            if(currentPrice.floatValue() > lastDollarPrice.getCurrencyPrice().floatValue()) {
+            if(currentPrice.compareTo(lastDollarPrice.getCurrencyPrice()) > 0) {
                 updatePrice = true;
                 saveQuotation(currencyPriceInfo);
             }

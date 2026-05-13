@@ -14,7 +14,8 @@ import java.util.Date;
 public class QuotationEntity {
 
     @Id
-    @GeneratedValue
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "quotation_seq")
+    @SequenceGenerator(name = "quotation_seq", sequenceName = "quotation_seq", allocationSize = 1)
     public Long id;
     private Date date;
     @Column(name = "currency_price")
